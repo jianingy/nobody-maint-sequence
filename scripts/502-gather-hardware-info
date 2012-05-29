@@ -1,0 +1,158 @@
+#!/usr/bin/env perl
+# author: jianingy.yang@gmail.com
+
+use strict;
+use warnings;
+
+sub cpuinfo
+{
+	my %cpuinfo;
+	my ($model, $socket, $core) = ('', 'socket0', 'core0');
+	open(CPUINFO, "/proc/cpuinfo");
+	while (<CPUINFO>) {
+		chomp;
+		if (/^model name\s*:\s*(.+)/) {
+			$model = $1;
+	        $model =~ s/\s+/ /g;
+		} elsif (/^core id\s*:\s*(\d+)\s*/) {
+			$core = "core$1";
+		} elsif (/^physical id\s*:\s*(\d+)\s*/) {
+			$socket = "socket$1";
+		} elsif (/^$/) {
+			$cpuinfo{$socket}->{model} = $model;
+			$cpuinfo{$socket}->{$core}->{thread}++;
+		}
+	}
+
+	my %models;
+	for (keys %cpuinfo) {
+		my $cpu = $cpuinfo{$_};
+		my $threads = 0;
+		my $cores = 0;
+		foreach (keys %$cpu) {
+			next unless /^core\d+/;
+			$threads = $threads + int($cpu->{$_}->{thread});
+			$cores++;
+		}
+		$models{"$cpu->{model} (cores: $cores, threads: $threads)"}++;
+	}
+	my @desc;
+	foreach (keys %models) {
+		push @desc, "$models{$_} x $_";
+	}
+	return "@desc";
+}
+
+sub meminfo
+{
+	open(MEMINFO, "/proc/meminfo");
+	while (<MEMINFO>) {
+		return int($1 / 1024 + 0.5)."MB" if /^MemTotal\s*:\s*(.+)\s*kB/;
+	}
+
+}
+
+sub kernelinfo
+{
+	my $kernel = qx/uname -r/;
+	chomp $kernel;
+	return $kernel;
+}
+
+sub hostname
+{
+	my $hostname = qx/hostname -f/;
+	chomp $hostname;
+	return $hostname;
+}
+
+sub ip
+{
+	my $iface;
+	foreach (split /\n/, qx{ip ro list}) {
+		$iface = (split /\s+/)[4] if /^default/;
+		last if $iface;
+	}
+
+	foreach (split /\n/, qx{ip a l dev $iface}) {
+		return $1 if m#^\s+inet\s+([0-9./]+)#;
+	}
+	return '' unless $iface;
+}
+
+sub gateway
+{
+	foreach (split /\n/, qx{ip ro list}) {
+		return (split /\s+/)[2] if /^default/;
+	}
+}
+
+sub gateway6 
+{
+	foreach (split /\n/, qx{ip -6 ro list}) {
+		return (split /\s+/)[2] if /^2000::\/3/;
+	}
+
+	foreach (split /\n/, qx{ip -6 ro list}) {
+		return (split /\s+/)[2] if /^default/;
+	}
+}
+
+sub ip6 
+{
+	my $iface;
+	foreach (split /\n/, qx{ip -6 ro list}) {
+		$iface = (split /\s+/)[4] if /^2000::\/3/;
+		$iface = (split /\s+/)[4] if /^default/;
+		last if $iface;
+	}
+
+	foreach (split /\n/, qx{ip -6 a l dev $iface}) {
+		return $1 if m#^\s+inet6\s+([a-fA-F0-9:/]+)#;
+	}
+	return '' unless $iface;
+}
+
+sub cat
+{
+	open FH, '<', shift;
+	undef $/;
+	return <FH>;
+}
+
+sub osver
+{
+	return &cat("/etc/redhat-release") if -r '/etc/redhat-release';
+	return &cat("/etc/slackware-version") if -r '/etc/slackware-version';
+	return 'Debian '.&cat("/etc/debian_version") if -r '/etc/debian_version';
+	return "";
+}
+
+sub gemstone
+{
+	return 'w/inactive' unless -r '/etc/motd';
+	foreach(split /\n/, &cat('/etc/motd')) {
+		chomp;
+		if (/^last-working-gemstone:\s+(\d+)/) {
+			my $int = int(time - $1);
+			return 'o/active' if $int <= 7200;
+			return 'e/rotten' if $int > 7200;
+		}
+	}
+	return "w/inactive";
+}
+
+my @desc;
+
+push @desc, "HOSTNAME:".hostname();
+push @desc, "CPU:".cpuinfo();
+push @desc, "MEM:".meminfo();
+push @desc, "KERNEL:".kernelinfo();
+push @desc, "IP:".ip();
+push @desc, "IP:".ip6();
+push @desc, "GATEWAY:".gateway();
+push @desc, "GATEWAY:".gateway6();
+push @desc, "OS:".osver();
+push @desc, "GEMSTONE:".gemstone();
+print "$0: $_\n" foreach (@desc);
+

@@ -1,0 +1,5 @@
+#!/bin/sh
+
+set -e
+hostname=$(hostname -f)
+rsync -a $hostname.status $hostname.stdout $hostname.stderr nobody@hq.linuxnote.net::nobody-maint-status

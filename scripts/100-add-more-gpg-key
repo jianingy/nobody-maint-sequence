@@ -1,0 +1,21 @@
+#!/bin/sh
+FAILED=""
+add_key()
+{
+	keyid=$1
+	gpg >/dev/null 2>&1 --list-keys $keyid || gpg >/dev/null 2>&1 --recv-keys $keyid
+
+	if gpg >/dev/null 2>&1 --list-keys $keyid; then
+		echo "$0: $keyid added"
+	else
+		echo "$0: $keyid cannot be added"
+		FAILED=1
+	fi
+}
+
+add_key "3DFD3861" # jianingy.yang@gmail.com
+
+
+[ -n "$FAILED" ] && exit 111
+
+exit 0
